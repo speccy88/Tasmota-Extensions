@@ -5,6 +5,8 @@ on:
   push:
     paths:
       - 'raw/**'
+      - 'gen.py'
+      - '.github/workflows/build-extensions.yml'
 
 jobs:
   build-extensions:

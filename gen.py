@@ -55,6 +55,36 @@ def load_manifest(manifest_path: Path) -> Optional[Dict]:
         print(f"ERROR: Failed to read {manifest_path}: {e}")
         return None
 
+def minify_berry_source(source: bytes) -> bytes:
+    """Return a compact form of Berry source for generated .tapp files.
+
+    The raw/ tree is the maintainable source of truth and should stay fully
+    formatted. Installed .tapp files are copied to constrained device
+    filesystems, so strip only layout that Berry does not need: blank lines,
+    indentation and full-line comments. Inline code and non-Berry files are left
+    untouched.
+    """
+    try:
+        text = source.decode('utf-8')
+    except UnicodeDecodeError:
+        return source
+
+    compact_lines = []
+    for line in text.splitlines():
+        stripped = line.strip()
+        if not stripped or stripped.startswith('#'):
+            continue
+        compact_lines.append(stripped)
+
+    return ('\n'.join(compact_lines) + '\n').encode('utf-8')
+
+def file_payload_for_tapp(file_path: Path) -> bytes:
+    """Read one raw extension file and compact Berry source when safe."""
+    data = file_path.read_bytes()
+    if file_path.suffix.lower() == '.be':
+        return minify_berry_source(data)
+    return data
+
 def create_tapp_file(source_dir: Path, output_dir: Path) -> Optional[str]:
     """Create uncompressed .tapp file from source directory"""
     # Generate filename: replace spaces with underscores and add .tapp extension
@@ -71,9 +101,9 @@ def create_tapp_file(source_dir: Path, output_dir: Path) -> Optional[str]:
                     zip_info.date_time = (2025, 9, 1, 0, 0, 0)  # Consistent timestamp
                     zip_info.compress_type = zipfile.ZIP_STORED
                     
-                    # Read file content and add to zip
-                    with open(file_path, 'rb') as f:
-                        zf.writestr(zip_info, f.read())
+                    # Read file content and add to zip. Berry sources are
+                    # compacted here; raw/ keeps the readable source.
+                    zf.writestr(zip_info, file_payload_for_tapp(file_path))
                     print(f"  Added: {file_path.name}")
         
         print(f"Created: {tapp_path}")
